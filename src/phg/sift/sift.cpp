@@ -293,7 +293,7 @@ void phg::SIFT::findLocalExtremasAndDescribe(const std::vector<cv::Mat> &gaussia
     }
 }
 
-void calculateMagnitudeAndOrientation(const cv::Mat &img, size_t x, size_t y, double *magnitude, double *orientation) {
+void calculateMagnitudeAndOrientation(const cv::Mat &img, size_t x, size_t y, double *magnitude, double *orientation, double angle = 0.0) {
     // m(x, y)=(L(x + 1, y) − L(x − 1, y))^2 + (L(x, y + 1) − L(x, y − 1))^2
     double dx = img.at<float>(y, x + 1) - img.at<float>(y, x - 1);
     double dy = img.at<float>(y + 1, x) - img.at<float>(y - 1, x);
@@ -303,7 +303,7 @@ void calculateMagnitudeAndOrientation(const cv::Mat &img, size_t x, size_t y, do
     // atan( (L(x, y + 1) − L(x, y − 1)) / (L(x + 1, y) − L(x − 1, y)) )
     double orientation_ = atan2(dy, dx); // TODO? подсказка - используйте atan2(dy, dx)
     orientation_ = orientation_ * 180.0 / M_PI;
-    orientation_ = (orientation_ + 90.0);
+    orientation_ = (orientation_ + 90.0 - angle);
     if (orientation_ < 0.0) orientation_ += 360.0;
     if (orientation_ >= 360.0) orientation_ -= 360.0;
     if (!(orientation_ >= 0.0 && orientation_ < 360.0))
@@ -375,7 +375,7 @@ bool phg::SIFT::buildDescriptor(const cv::Mat &img, float px, float py, double d
 
                             double magnitude;
                             double orientation;
-                            calculateMagnitudeAndOrientation(img, x, y, &magnitude, &orientation);
+                            calculateMagnitudeAndOrientation(img, x, y, &magnitude, &orientation, angle);
 
                             // TODO за счет чего этот вклад будет сравниваться с этим же вкладом даже если эта картинка будет повернута? что нужно сделать с ориентацией каждого градиента из окрестности этой ключевой точки?
 
