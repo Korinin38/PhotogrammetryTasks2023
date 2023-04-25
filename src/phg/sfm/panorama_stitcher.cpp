@@ -12,8 +12,7 @@
  * */
 cv::Mat phg::stitchPanorama(const std::vector<cv::Mat> &imgs,
                             const std::vector<int> &parent,
-                            std::function<cv::Mat(const cv::Mat &, const cv::Mat &)> &homography_builder)
-{
+                            std::function<cv::Mat(const cv::Mat &, const cv::Mat &)> &homography_builder) {
     const int n_images = imgs.size();
 
     // склеивание панорамы происходит через приклеивание всех картинок к корню, некоторые приклеиваются не напрямую, а через цепочку других картинок
@@ -23,7 +22,26 @@ cv::Mat phg::stitchPanorama(const std::vector<cv::Mat> &imgs,
     {
         // здесь надо посчитать вектор Hs
         // при этом можно обойтись n_images - 1 вызовами функтора homography_builder
-        throw std::runtime_error("not implemented yet");
+        size_t n_images = Hs.size();
+        std::vector<bool> calculated(n_images, false);
+
+        std::function<void(size_t)> calcHSRecursive = [&](size_t index) -> void {
+            if (calculated[index]) return;
+
+            calculated[index] = true;
+            if (parent[index] == -1) {
+                Hs[index] = cv::Mat::eye(3, 3, CV_64FC1);
+                return;
+            }
+
+            calcHSRecursive(parent[index]);
+
+            Hs[index] = Hs[parent[index]] * homography_builder(imgs[index], imgs[parent[index]]);
+        };
+
+        for (size_t i = 0; i < n_images; ++i) {
+            calcHSRecursive(i);
+        }
     }
 
     bbox2<double, cv::Point2d> bbox;
@@ -61,7 +79,7 @@ cv::Mat phg::stitchPanorama(const std::vector<cv::Mat> &imgs,
 //        }
 
     std::vector<cv::Mat> Hs_inv;
-    std::transform(Hs.begin(), Hs.end(), std::back_inserter(Hs_inv), [&](const cv::Mat &H){ return H.inv(); });
+    std::transform(Hs.begin(), Hs.end(), std::back_inserter(Hs_inv), [&](const cv::Mat &H) { return H.inv(); });
 
 #pragma omp parallel for
     for (int y = 0; y < result_height; ++y) {
