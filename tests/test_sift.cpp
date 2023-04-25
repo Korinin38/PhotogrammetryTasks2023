@@ -1,5 +1,3 @@
-#pragma clang diagnostic push
-#pragma ide diagnostic ignored "openmp-use-default-none"
 #include <gtest/gtest.h>
 
 #include <opencv2/core.hpp>
@@ -423,5 +421,3 @@ TEST (SIFT, HerzJesu19RotateM40) {
     double minRecall = 0.75;
     evaluateDetection(cv::getRotationMatrix2D(cv::Point(jesu19.cols/2, jesu19.rows/2), -angleDegreesClockwise, scale), minRecall, jesu19);
 }
-
-#pragma clang diagnostic pop
