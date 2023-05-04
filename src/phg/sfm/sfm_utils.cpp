@@ -41,5 +41,9 @@ void phg::randomSample(std::vector<int> &dst, int max_id, int sample_size, uint6
 // проверяет, что расстояние от точки до линии меньше порога
 bool phg::epipolarTest(const cv::Vec2d &pt0, const cv::Vec2d &pt1, const cv::Matx33d &F, double t)
 {
-    throw std::runtime_error("not implemented yet");
+    cv::Vec3d line = F * cv::Vec3d(pt0[0], pt0[1], 1);
+    double length = abs(pt1[0] * line[0] + pt1[1] * line[1] + line[2]);
+    double l_len = sqrt(pow(line[0], 2) + pow(line[1], 2));
+    double length_norm = length / l_len;
+    return (length_norm < t);
 }
