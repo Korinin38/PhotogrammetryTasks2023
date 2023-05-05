@@ -12,7 +12,7 @@ void phg::DescriptorMatcher::filterMatchesRatioTest(const std::vector<std::vecto
 
 
     for (const auto & match : matches) {
-        if (match.size() == 1 || match[0].distance / match[1].distance < MATCH_RATIO) {
+        if (match.size() == 1 || match[0].distance < MATCH_RATIO * match[1].distance) {
             filtered_matches.push_back(match[0]);
         }
     }
