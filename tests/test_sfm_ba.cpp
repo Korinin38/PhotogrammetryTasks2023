@@ -1,3 +1,5 @@
+#pragma clang diagnostic push
+#pragma ide diagnostic ignored "openmp-use-default-none"
 #include <gtest/gtest.h>
 
 #include <opencv2/core.hpp>
@@ -382,30 +384,62 @@ public:
                     const T* camera_intrinsics, // внутренние калибровочные параметры камеры: [5] = {k1, k2, f, cx, cy} (одни и те же для всех кадров, т.к. снято на одну и ту же камеру)
                     const T* point_global,      // 3D точка: [3]  = {x, y, z}
                     T* residuals) const {       // невязка:  [2]  = {dx, dy}
-        // TODO реализуйте функцию проекции, все нужно делать в типе T чтобы ceres-solver мог под него подставить как Jet (очень рекомендую посмотреть Jet.h - как класная статья из википедии!), так и double
+        // реализуйте функцию проекции, все нужно делать в типе T чтобы ceres-solver мог под него подставить как Jet (очень рекомендую посмотреть Jet.h - как класная статья из википедии!), так и double
 
         // translation[3] - сдвиг в локальную систему координат камеры
 
         // rotation[3] - angle-axis rotation, поворачиваем точку point->p (чтобы перейти в локальную систему координат камеры)
         // подробнее см. https://en.wikipedia.org/wiki/Axis%E2%80%93angle_representation
         // (P.S. у камеры всмысле вращения три степени свободы)
+        const T *translation = camera_extrinsics;
+        const T *rotation_angle_axis = camera_extrinsics + 3;
+
+        T Rt[9];
+        ceres::AngleAxisToRotationMatrix(rotation_angle_axis, Rt);
+
+        T point[3];
+        for (int i = 0; i < 3; i++) {
+            point[i] = T(0);
+            for (int j = 0; j < 3; j++) {
+                point[i] += Rt[3 * j + i] * (point_global[j] - translation[j]);
+            }
+        }
 
         // Проецируем точку на фокальную плоскость матрицы (т.е. плоскость Z=фокальная длина)
+        point[0] /= point[2];
+        point[1] /= point[2];
 
 #if ENABLE_INSTRINSICS_K1_K2
         // k1, k2 - коэффициенты радиального искажения (radial distortion)
+        T k1 = camera_intrinsics[0];
+        T k2 = camera_intrinsics[1];
+
+        T x = point[0];
+        T y = point[1];
+        T r = x * x + y * y;
+        T shift = k1 * r + k2 * r * r;
+        point[0] += shift;
+        point[1] += shift;
 #endif
 
         // Домножаем на f, тем самым переводя в пиксели
+        T f = camera_intrinsics[2];
+        point[0] *= f;
+        point[1] *= f;
 
         // Из координат когда точка (0, 0) - центр оптической оси
         // Переходим в координаты когда точка (0, 0) - левый верхний угол картинки
         // cx, cy - координаты центра оптической оси (обычно это центр картинки, но часто он чуть смещен)
+        T cx = camera_intrinsics[3], cy = camera_intrinsics[4];
+        point[0] += cx;
+        point[1] += cy;
 
         // Теперь по спроецированным координатам не забудьте посчитать невязку репроекции
+        residuals[0] = point[0] - observed_x;
+        residuals[1] = point[1] - observed_y;
 
         return true;
-        // TODO сверьте эту функцию с вашей реализацией проекции в src/phg/core/calibration.cpp (они должны совпадать)
+        // сверьте эту функцию с вашей реализацией проекции в src/phg/core/calibration.cpp (они должны совпадать)
     }
 protected:
     double observed_x;
@@ -435,8 +469,10 @@ void runBA(std::vector<vector3d> &tie_points,
     ASSERT_NEAR(calib.cy_, 0.0, 0.3 * calib.height());
 
     // внутренние калибровочные параметры камеры: [5] = {k1, k2, f, cx, cy}
-    // TODO: преобразуйте calib в блок параметров камеры (ее внутренних характеристик) для оптимизации в BA
-    double camera_intrinsics[5];
+    // преобразуйте calib в блок параметров камеры (ее внутренних характеристик) для оптимизации в BA
+    double camera_intrinsics[5] = {calib.k1_, calib.k2_, calib.f_,
+                                   calib.cx_ + calib.width_ * 0.5,
+                                   calib.cy_ + calib.height_ * 0.5};
     std::cout << "Before BA ";
     printCamera(camera_intrinsics);
 
@@ -575,8 +611,12 @@ void runBA(std::vector<vector3d> &tie_points,
 
     std::cout << "After BA ";
     printCamera(camera_intrinsics);
-    // TODO преобразуйте параметры камеры в обратную сторону, чтобы последующая резекция учла актуальное представление о пространстве:
-    // calib.* = camera_intrinsics[*];
+    // преобразуйте параметры камеры в обратную сторону, чтобы последующая резекция учла актуальное представление о пространстве:
+     calib.k1_ = camera_intrinsics[0];
+     calib.k2_ = camera_intrinsics[1];
+     calib.f_ = camera_intrinsics[2];
+     calib.cx_ = camera_intrinsics[3] - calib.width_ * 0.5;
+     calib.cy_ = camera_intrinsics[4] - calib.height_ * 0.5;
 
     ASSERT_NEAR(calib.f_ , DATASET_F, 0.2 * DATASET_F);
     ASSERT_NEAR(calib.cx_, 0.0, 0.3 * calib.width());
@@ -651,6 +691,22 @@ void runBA(std::vector<vector3d> &tie_points,
             if (ENABLE_OUTLIERS_FILTRATION_COLINEAR && ENABLE_BA) {
                 // TODO выполните проверку случая когда два луча почти параллельны, чтобы не было странных точек улетающих на бесконечность (например чтобы угол был хотя бы 2.5 градуса)
                 // should_be_disabled = true;
+                for (size_t cj = 0; cj < track.img_kpt_pairs.size(); ++cj) {
+                    if (ci == cj) continue;
+
+                    int camera_id_j = track.img_kpt_pairs[cj].first;
+
+                    matrix3d R_j; vector3d camera_origin_j;
+                    phg::decomposeUndistortedPMatrix(R_j, camera_origin_j, cameras[camera_id_j]);
+
+                    vector3d v_i = camera_origin - track_point;
+                    vector3d v_j = camera_origin_j - track_point;
+                    double MIN_ANGLE = 0.1;
+                    if (cv::norm(v_i.cross(v_j)) < MIN_ANGLE * (cv::norm(v_i) * cv::norm(v_j))) {
+                        should_be_disabled = true;
+                        break;
+                    }
+                }
             }
 
             {
@@ -740,3 +796,5 @@ void generateTiePointsCloud(const std::vector<vector3d> &tie_points,
         tie_points_colors.push_back(cv::Vec3b(255, 0, 0));
     }
 }
+
+#pragma clang diagnostic pop
