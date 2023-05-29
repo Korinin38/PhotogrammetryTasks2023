@@ -124,7 +124,7 @@ namespace phg {
                     // 105: отклонение тем меньше, чем номер итерации ближе к NITERATIONS
                     np = cv::normalize(n0 + randomNormalObservedFromCamera(cameras_RtoWorld[ref_cam], r) * deviation);
                     // Q: Улучшило ли это результат?
-                    // A: очень незначительное улучшение, на пол-тысячной коста.
+                    // A: очень незначительное улучшение, на пол-тысячной коста (визуально тоже не видно результата).
 
 
                     dp = std::max(ref_depth_min, std::min(ref_depth_max, dp));
